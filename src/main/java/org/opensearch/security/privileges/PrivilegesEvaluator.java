@@ -81,6 +81,7 @@ import org.opensearch.core.common.Strings;
 import org.opensearch.core.common.transport.TransportAddress;
 import org.opensearch.core.xcontent.NamedXContentRegistry;
 import org.opensearch.index.reindex.ReindexAction;
+import org.opensearch.script.mustache.RenderSearchTemplateAction;
 import org.opensearch.security.auditlog.AuditLog;
 import org.opensearch.security.configuration.ClusterInfoHolder;
 import org.opensearch.security.configuration.ConfigurationRepository;
@@ -89,6 +90,7 @@ import org.opensearch.security.resolver.IndexResolverReplacer.Resolved;
 import org.opensearch.security.securityconf.ConfigModel;
 import org.opensearch.security.securityconf.DynamicConfigModel;
 import org.opensearch.security.securityconf.SecurityRoles;
+import org.opensearch.security.securityconf.impl.DashboardSignInOption;
 import org.opensearch.security.support.ConfigConstants;
 import org.opensearch.security.support.WildcardMatcher;
 import org.opensearch.security.user.User;
@@ -191,7 +193,7 @@ public class PrivilegesEvaluator {
         this.dcm = dcm;
     }
 
-    private SecurityRoles getSecurityRoles(Set<String> roles) {
+    public SecurityRoles getSecurityRoles(Set<String> roles) {
         return configModel.getSecurityRoles().filter(roles);
     }
 
@@ -619,6 +621,10 @@ public class PrivilegesEvaluator {
         return dcm.getDashboardsOpenSearchRole();
     }
 
+    public List<DashboardSignInOption> getSignInOptions() {
+        return dcm.getSignInOptions();
+    }
+
     private Set<String> evaluateAdditionalIndexPermissions(final ActionRequest request, final String originalAction) {
         // --- check inner bulk requests
         final Set<String> additionalPermissionsRequired = new HashSet<>();
@@ -696,8 +702,7 @@ public class PrivilegesEvaluator {
             || (action0.startsWith(MultiSearchAction.NAME))
             || (action0.equals(MultiTermVectorsAction.NAME))
             || (action0.equals(ReindexAction.NAME))
-
-        );
+            || (action0.equals(RenderSearchTemplateAction.NAME)));
     }
 
     @SuppressWarnings("unchecked")

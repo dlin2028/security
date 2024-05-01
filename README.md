@@ -83,10 +83,6 @@ Run tests against local cluster:
 ```bash
 ./gradlew integTestRemote -Dtests.rest.cluster=localhost:9200 -Dtests.cluster=localhost:9200 -Dtests.clustername=docker-cluster -Dsecurity=true -Dhttps=true -Duser=admin -Dpassword=admin -Dcommon_utils.version="2.2.0.0"
 ```
-OR
-```bash
-./scripts/integtest.sh
-```
 Note: To run against a remote cluster replace cluster-name and `localhost:9200` with the IPAddress:Port of that cluster.
 
 Build artifacts (zip, deb, rpm):
@@ -133,8 +129,7 @@ plugins.security.system_indices.indices: [".plugins-ml-model", ".plugins-ml-task
 
 The demo configuration can be modified in the following files to add a new system index to the demo configuration:
 
-- https://github.com/opensearch-project/security/blob/main/tools/install_demo_configuration.sh
-- https://github.com/opensearch-project/security/blob/main/tools/install_demo_configuration.bat
+- https://github.com/opensearch-project/security/blob/main/src/main/java/org/opensearch/security/tools/democonfig/SecuritySettingsConfigurer.java
 
 
 ## Contributing

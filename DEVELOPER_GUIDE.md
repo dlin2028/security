@@ -86,7 +86,7 @@ rm -rf config/
 ## ROOT
 
 openssl genrsa -out root-ca-key.pem 2048
-openssl req -new -x509 -sha256 -key root-ca-key.pem -subj "/DC=com/DC=example/O=Example Com Inc./OU=Example Com Inc. Root CA/CN=Example Com Inc. Root CA" -addext "basicConstraints = critical,CA:TRUE" -addext "keyUsage = critical, digitalSignature, keyCertSign, cRLSign" -addext "subjectKeyIdentifier = hash" -addext "authorityKeyIdentifier = keyid:always,issuer:always" -out root-ca.pem
+openssl req -new -x509 -sha256 -days 3650 -key root-ca-key.pem -subj "/DC=com/DC=example/O=Example Com Inc./OU=Example Com Inc. Root CA/CN=Example Com Inc. Root CA" -addext "basicConstraints = critical,CA:TRUE" -addext "keyUsage = critical, digitalSignature, keyCertSign, cRLSign" -addext "subjectKeyIdentifier = hash" -addext "authorityKeyIdentifier = keyid:always,issuer:always" -out root-ca.pem
 
 
 ## NODE
@@ -94,13 +94,15 @@ openssl req -new -x509 -sha256 -key root-ca-key.pem -subj "/DC=com/DC=example/O=
 openssl genrsa -out esnode-key-temp.pem 2048
 openssl pkcs8 -inform PEM -outform PEM -in esnode-key-temp.pem -topk8 -nocrypt -v1 PBE-SHA1-3DES -out esnode-key.pem
 openssl req -new -key esnode-key.pem -subj "/C=de/L=test/O=node/OU=node/CN=node-0.example.com" -out esnode.csr
-openssl x509 -req -in esnode.csr -out esnode.pem -CA root-ca.pem -CAkey root-ca-key.pem -CAcreateserial -days 3650 -extfile <(printf "subjectAltName = RID:1.2.3.4.5.5, DNS:node-0.example.com, DNS:localhost, IP:::1, IP:127.0.0.1\nkeyUsage = digitalSignature, nonRepudiation, keyEncipherment\nextendedKeyUsage = serverAuth, clientAuth\nbasicConstraints = critical,CA:FALSE")
+printf "subjectAltName = RID:1.2.3.4.5.5, DNS:node-0.example.com, DNS:localhost, IP:::1, IP:127.0.0.1\nkeyUsage = digitalSignature, nonRepudiation, keyEncipherment\nextendedKeyUsage = serverAuth, clientAuth\nbasicConstraints = critical,CA:FALSE" > esnode_ext.conf
+openssl x509 -req -in esnode.csr -out esnode.pem -CA root-ca.pem -CAkey root-ca-key.pem -CAcreateserial -days 3650 -extfile esnode_ext.conf
 
 
 ## ADMIN
 
 openssl req -new -newkey rsa:2048 -keyout kirk-key.pem -out kirk.csr -nodes -subj "/C=de/L=test/O=client/OU=client/CN=kirk"
-openssl x509 -req -in kirk.csr -CA root-ca.pem -CAkey root-ca-key.pem -CAcreateserial -out kirk.pem -days 3650 -extfile <(printf "basicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature,nonRepudiation,keyEncipherment\nextendedKeyUsage = critical,clientAuth\nauthorityKeyIdentifier = keyid,issuer:always\nsubjectKeyIdentifier = hash")
+printf "basicConstraints = critical,CA:FALSE\nkeyUsage = critical,digitalSignature,nonRepudiation,keyEncipherment\nextendedKeyUsage = critical,clientAuth\nauthorityKeyIdentifier=keyid,issuer:always\nsubjectKeyIdentifier = hash" > kirk_ext.conf
+openssl x509 -req -in kirk.csr -CA root-ca.pem -CAkey root-ca-key.pem -CAcreateserial -out kirk.pem -days 3650 -extfile kirk_ext.conf
 
 ## Remove root-ca-key.pem and other temp keys
 
@@ -162,6 +164,18 @@ extension_hw_greet:
     - "hw-user"
 ```
 
+### Setting up password for demo admin user
+
+This step is a pre-requisite to installing demo configuration. You can pass the demo `admin` user password by exporting `OPENSEARCH_INITIAL_ADMIN_PASSWORD` variable with a password.
+```shell
+export OPENSEARCH_INITIAL_ADMIN_PASSWORD=<password>
+```
+
+**_Note:_** If no password is supplied, the installation will fail. The password supplied will also be tested for its strength and will be blocked if it is too simple. There is an option to skip this password validation by passing the `-t` option to the installation script. However, this should only be used for test environments.
+
+
+### Executing the demo installation script
+
 To install the demo certificates and default configuration, answer `y` to the first two questions and `n` to the last one. The log should look like below:
 
 ```bash
@@ -192,17 +206,17 @@ Detected OpenSearch Security Version: *
 "/Users/XXXXX/Test/opensearch-*/plugins/opensearch-security/tools/securityadmin.sh" -cd "/Users/XXXXX/Test/opensearch-*/config/opensearch-security/" -icl -key "/Users/XXXXX/Test/opensearch-*/config/kirk-key.pem" -cert "/Users/XXXXX/Test/opensearch-*/config/kirk.pem" -cacert "/Users/XXXXX/Test/opensearch-*/config/root-ca.pem" -nhnv
 ### or run ./securityadmin_demo.sh
 ### To use the Security Plugin ConfigurationGUI
-### To access your secured cluster open https://<hostname>:<HTTP port> and log in with admin/admin.
+### To access your secured cluster open https://<hostname>:<HTTP port> and log in with admin/<your-admin-password>.
 ### (Ignore the SSL certificate warning because we installed self-signed demo certificates)
 ```
 
 Now if we start our server again and try the original `curl localhost:9200`, it will fail.
-Try this command instead: `curl -XGET https://localhost:9200 -u 'admin:admin' --insecure`. It should succeed.
+Try this command instead: `curl -XGET https://localhost:9200 -u 'admin:<your-admin-password>' --insecure`. It should succeed.
 
 You can also make this call to return the authenticated user details:
 
 ```bash
-curl -XGET https://localhost:9200/_plugins/_security/authinfo -u 'admin:admin' --insecure
+curl -XGET https://localhost:9200/_plugins/_security/authinfo -u 'admin:<your-admin-password>' --insecure
 
 {
   "user": "User [name=admin, backend_roles=[admin], requestedTenant=null]",
@@ -232,11 +246,30 @@ curl -XGET https://localhost:9200/_plugins/_security/authinfo -u 'admin:admin' -
 
 Launch IntelliJ IDEA, choose **Project from Existing Sources**, and select directory with Gradle build script (`build.gradle`).
 
-## Running integration tests
+## Running tests
 
 Locally these can be run with `./gradlew test` with detailed results being available at `${project-root}/build/reports/tests/test/index.html`. You can also run tests through an IDEs JUnit test runner.
 
-Integration tests are automatically run on all pull requests for all supported versions of the JDK. These must pass for change(s) to be merged. Detailed logs of these test results are available by going to the GitHub Actions workflow summary view and downloading the workflow run of the tests. If you see multiple tests listed with different JDK versions, you can download the version with whichever JDK you are interested in. After extracting the test file on your local machine, integration tests results can be found at `./tests/tests/index.html`.
+Tests are automatically run on all pull requests for all supported versions of the JDK. These must pass for change(s) to be merged. Detailed logs of these test results are available by going to the GitHub Actions workflow summary view and downloading the workflow run of the tests. If you see multiple tests listed with different JDK versions, you can download the version with whichever JDK you are interested in. After extracting the test file on your local machine, integration tests results can be found at `./tests/tests/index.html`.
+
+### Running an individual test multiple times
+
+This repo has a `@Repeat` annotation which you can import to annotate a test to run many times repeatedly. To use the annotation, add the following code to your test suite.
+
+```
+@Rule
+public RepeatRule repeatRule = new RepeatRule();
+
+@Test
+@Repeat(10)
+public void testMethod() {
+    ...
+}
+```
+
+## Running tests in the integrationTest package
+
+Tests in the integrationTest package can be run with `./gradlew integrationTest`.
 
 ### Bulk test runs
 

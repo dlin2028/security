@@ -32,6 +32,7 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.SortedSet;
@@ -44,6 +45,7 @@ import com.google.common.cache.CacheBuilder;
 import com.google.common.cache.RemovalListener;
 import com.google.common.cache.RemovalNotification;
 import com.google.common.collect.Multimap;
+import org.apache.http.HttpHeaders;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -213,7 +215,7 @@ public class BackendRegistry {
      * @param request
      * @return The authenticated user, null means another roundtrip
      * @throws OpenSearchSecurityException
-     */
+    */
     public boolean authenticate(final SecurityRequestChannel request) {
         final boolean isDebugEnabled = log.isDebugEnabled();
         final boolean isBlockedBasedOnAddress = request.getRemoteAddress()
@@ -225,7 +227,7 @@ public class BackendRegistry {
                 log.debug("Rejecting REST request because of blocked address: {}", request.getRemoteAddress().orElse(null));
             }
 
-            request.queueForSending(new SecurityResponse(SC_UNAUTHORIZED, new Exception("Authentication finally failed")));
+            request.queueForSending(new SecurityResponse(SC_UNAUTHORIZED, "Authentication finally failed"));
             return false;
         }
 
@@ -247,7 +249,7 @@ public class BackendRegistry {
 
         if (!isInitialized()) {
             log.error("Not yet initialized (you may need to run securityadmin)");
-            request.queueForSending(new SecurityResponse(SC_SERVICE_UNAVAILABLE, new Exception("OpenSearch Security not initialized.")));
+            request.queueForSending(new SecurityResponse(SC_SERVICE_UNAVAILABLE, "OpenSearch Security not initialized."));
             return false;
         }
 
@@ -309,7 +311,7 @@ public class BackendRegistry {
 
             if (ac == null) {
                 // no credentials found in request
-                if (anonymousAuthEnabled) {
+                if (anonymousAuthEnabled && isRequestForAnonymousLogin(request.params(), request.getHeaders())) {
                     continue;
                 }
 
@@ -377,11 +379,7 @@ public class BackendRegistry {
                 log.error("Cannot authenticate rest user because admin user is not permitted to login via HTTP");
                 auditLog.logFailedLogin(authenticatedUser.getName(), true, null, request);
                 request.queueForSending(
-                    new SecurityResponse(
-                        SC_FORBIDDEN,
-                        null,
-                        "Cannot authenticate user because admin user is not permitted to login via HTTP"
-                    )
+                    new SecurityResponse(SC_FORBIDDEN, "Cannot authenticate user because admin user is not permitted to login via HTTP")
                 );
                 return false;
             }
@@ -413,19 +411,6 @@ public class BackendRegistry {
                 log.debug("User still not authenticated after checking {} auth domains", restAuthDomains.size());
             }
 
-            if (authCredentials == null && anonymousAuthEnabled) {
-                final String tenant = resolveTenantFrom(request);
-                User anonymousUser = new User(User.ANONYMOUS.getName(), new HashSet<String>(User.ANONYMOUS.getRoles()), null);
-                anonymousUser.setRequestedTenant(tenant);
-
-                threadPool.getThreadContext().putTransient(ConfigConstants.OPENDISTRO_SECURITY_USER, anonymousUser);
-                auditLog.logSucceededLogin(anonymousUser.getName(), false, null, request);
-                if (isDebugEnabled) {
-                    log.debug("Anonymous User is authenticated");
-                }
-                return true;
-            }
-
             Optional<SecurityResponse> challengeResponse = Optional.empty();
 
             if (firstChallengingHttpAuthenticator != null) {
@@ -442,6 +427,19 @@ public class BackendRegistry {
                 }
             }
 
+            if (authCredentials == null && anonymousAuthEnabled && isRequestForAnonymousLogin(request.params(), request.getHeaders())) {
+                final String tenant = resolveTenantFrom(request);
+                User anonymousUser = new User(User.ANONYMOUS.getName(), new HashSet<String>(User.ANONYMOUS.getRoles()), null);
+                anonymousUser.setRequestedTenant(tenant);
+
+                threadPool.getThreadContext().putTransient(ConfigConstants.OPENDISTRO_SECURITY_USER, anonymousUser);
+                auditLog.logSucceededLogin(anonymousUser.getName(), false, null, request);
+                if (isDebugEnabled) {
+                    log.debug("Anonymous User is authenticated");
+                }
+                return true;
+            }
+
             log.warn(
                 "Authentication finally failed for {} from {}",
                 authCredentials == null ? null : authCredentials.getUsername(),
@@ -452,11 +450,26 @@ public class BackendRegistry {
             notifyIpAuthFailureListeners(request, authCredentials);
 
             request.queueForSending(
-                challengeResponse.orElseGet(() -> new SecurityResponse(SC_UNAUTHORIZED, null, "Authentication finally failed"))
+                challengeResponse.orElseGet(() -> new SecurityResponse(SC_UNAUTHORIZED, "Authentication finally failed"))
             );
             return false;
         }
         return authenticated;
+    }
+
+    /**
+     * Checks if incoming auth request is from an anonymous user
+     * Defaults all requests to yes, to allow anonymous authentication to succeed
+     * @param params the query parameters passed in this request
+     * @return false only if an explicit `auth_type` param is supplied, and its value is not anonymous, OR
+     * if request contains no authorization headers
+     * otherwise returns true
+     */
+    private boolean isRequestForAnonymousLogin(Map<String, String> params, Map<String, List<String>> headers) {
+        if (params.containsKey("auth_type")) {
+            return params.get("auth_type").equals("anonymous");
+        }
+        return !headers.containsKey(HttpHeaders.AUTHORIZATION);
     }
 
     private String resolveTenantFrom(final SecurityRequest request) {

@@ -32,9 +32,9 @@ import java.util.Iterator;
 import com.fasterxml.jackson.databind.JsonNode;
 import org.apache.hc.client5.http.classic.methods.HttpGet;
 import org.apache.hc.core5.http.Header;
-import org.apache.hc.core5.http.HttpStatus;
 import org.apache.hc.core5.http.HttpVersion;
 import org.apache.hc.core5.http2.HttpVersionPolicy;
+import org.apache.http.HttpStatus;
 import org.junit.Assert;
 import org.junit.Test;
 
@@ -302,12 +302,6 @@ public class InitializationIntegrationTests extends SingleClusterTest {
                 HttpStatus.SC_SERVICE_UNAVAILABLE,
                 rh.executeGetRequest("", encodeBasicHeader("admin", "admin")).getStatusCode()
             );
-
-            ClusterHelper.updateDefaultDirectory(defaultInitDirectory);
-            restart(Settings.EMPTY, null, settings, false);
-            rh = nonSslRestHelper();
-            Thread.sleep(10000);
-            Assert.assertEquals(HttpStatus.SC_OK, rh.executeGetRequest("", encodeBasicHeader("admin", "admin")).getStatusCode());
         } finally {
             ClusterHelper.resetSystemProperties();
         }

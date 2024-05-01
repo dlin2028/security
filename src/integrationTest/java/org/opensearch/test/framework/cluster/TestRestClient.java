@@ -31,13 +31,12 @@ package org.opensearch.test.framework.cluster;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.net.InetSocketAddress;
-import java.net.URI;
-import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.stream.Collectors;
@@ -61,10 +60,9 @@ import org.apache.hc.client5.http.impl.classic.CloseableHttpResponse;
 import org.apache.hc.client5.http.routing.HttpRoutePlanner;
 import org.apache.hc.core5.http.Header;
 import org.apache.hc.core5.http.HttpEntity;
-import org.apache.hc.core5.http.NameValuePair;
 import org.apache.hc.core5.http.io.entity.StringEntity;
 import org.apache.hc.core5.http.message.BasicHeader;
-import org.apache.hc.core5.net.URIBuilder;
+import org.apache.http.HttpHeaders;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -77,6 +75,7 @@ import static java.lang.String.format;
 import static java.util.Objects.requireNonNull;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
+import static org.hamcrest.Matchers.not;
 import static org.hamcrest.Matchers.notNullValue;
 
 /**
@@ -107,21 +106,22 @@ public class TestRestClient implements AutoCloseable {
         this.sourceInetAddress = sourceInetAddress;
     }
 
-    public HttpResponse get(String path, List<NameValuePair> queryParameters, Header... headers) {
-        try {
-            URI uri = new URIBuilder(getHttpServerUri()).setPath(path).addParameters(queryParameters).build();
-            return executeRequest(new HttpGet(uri), headers);
-        } catch (URISyntaxException ex) {
-            throw new RuntimeException("Incorrect URI syntax", ex);
-        }
-    }
-
     public HttpResponse get(String path, Header... headers) {
-        return get(path, Collections.emptyList(), headers);
+        return executeRequest(new HttpGet(getHttpServerUri() + "/" + path), headers);
     }
 
     public HttpResponse getAuthInfo(Header... headers) {
         return executeRequest(new HttpGet(getHttpServerUri() + "/_opendistro/_security/authinfo?pretty"), headers);
+    }
+
+    public HttpResponse securityHealth(Header... headers) {
+        return executeRequest(new HttpGet(getHttpServerUri() + "/_plugins/_security/health"), headers);
+    }
+
+    public HttpResponse getAuthInfo(Map<String, String> urlParams, Header... headers) {
+        String urlParamsString = "?"
+            + urlParams.entrySet().stream().map(e -> e.getKey() + "=" + e.getValue()).collect(Collectors.joining("&"));
+        return executeRequest(new HttpGet(getHttpServerUri() + "/_opendistro/_security/authinfo" + urlParamsString), headers);
     }
 
     public void confirmCorrectCredentials(String expectedUserName) {
@@ -185,6 +185,10 @@ public class TestRestClient implements AutoCloseable {
     public HttpResponse post(String path) {
         HttpPost uriRequest = new HttpPost(getHttpServerUri() + "/" + path);
         return executeRequest(uriRequest);
+    }
+
+    public HttpResponse patch(String path, ToXContentObject body) {
+        return patch(path, Strings.toString(XContentType.JSON, body));
     }
 
     public HttpResponse patch(String path, String body) {
@@ -284,7 +288,26 @@ public class TestRestClient implements AutoCloseable {
             this.header = inner.getHeaders();
             this.statusCode = inner.getCode();
             this.statusReason = inner.getReasonPhrase();
+
             inner.close();
+
+            if (this.body.length() != 0) {
+                verifyContentType();
+            }
+        }
+
+        private void verifyContentType() {
+            final String contentType = this.getHeader(HttpHeaders.CONTENT_TYPE).getValue();
+            if (contentType.contains("application/json")) {
+                assertThat("Response body format was not json, body: " + body, body.charAt(0), equalTo('{'));
+            } else {
+                assertThat(
+                    "Response body format was json, whereas content-type was " + contentType + ", body: " + body,
+                    body.charAt(0),
+                    not(equalTo('{'))
+                );
+            }
+
         }
 
         public String getContentType() {
@@ -397,6 +420,14 @@ public class TestRestClient implements AutoCloseable {
         public <T> T getBodyAs(Class<T> authInfoClass) {
             try {
                 return DefaultObjectMapper.readValue(getBody(), authInfoClass);
+            } catch (IOException e) {
+                throw new RuntimeException("Cannot parse response body", e);
+            }
+        }
+
+        public JsonNode bodyAsJsonNode() {
+            try {
+                return DefaultObjectMapper.readTree(getBody());
             } catch (IOException e) {
                 throw new RuntimeException("Cannot parse response body", e);
             }

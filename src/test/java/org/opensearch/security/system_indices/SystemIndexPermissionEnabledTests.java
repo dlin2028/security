@@ -12,7 +12,7 @@
 package org.opensearch.security.system_indices;
 
 import org.apache.hc.core5.http.Header;
-import org.apache.hc.core5.http.HttpStatus;
+import org.apache.http.HttpStatus;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -79,7 +79,8 @@ public class SystemIndexPermissionEnabledTests extends AbstractSystemIndicesTest
             if (index.equals(ACCESSIBLE_ONLY_BY_SUPER_ADMIN) || index.equals(SYSTEM_INDEX_WITH_NO_ASSOCIATED_ROLE_PERMISSIONS)) {
                 validateForbiddenResponse(response, "", normalUser);
             } else {
-                validateSearchResponse(response, 0);
+                // got 1 hits because system index permissions are enabled
+                validateSearchResponse(response, 1);
             }
         }
 

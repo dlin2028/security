@@ -25,7 +25,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.hc.core5.http.Header;
-import org.apache.hc.core5.http.HttpStatus;
+import org.apache.http.HttpStatus;
 import org.junit.After;
 import org.junit.Rule;
 import org.junit.Test;
@@ -682,7 +682,7 @@ public class AuditApiActionTest extends AbstractRestApiUnitTest {
             + "\"enable_rest\":true,\"disabled_rest_categories\":[\"AUTHENTICATED\"],"
             + "\"enable_transport\":true,\"disabled_transport_categories\":[\"SSL_EXCEPTION\"],"
             + "\"resolve_bulk_requests\":true,\"log_request_body\":true,\"resolve_indices\":true,\"exclude_sensitive_headers\":true,"
-            + "\"ignore_users\":[\"test-user-1\"],\"ignore_requests\":[\"test-request\"]},"
+            + "\"ignore_users\":[\"test-user-1\"],\"ignore_requests\":[\"test-request\"], \"ignore_headers\":[\"\"], \"ignore_url_params\":[]},"
             + "\"compliance\":{"
             + "\"enabled\":true,"
             + "\"internal_config\":true,\"external_config\":true,"
